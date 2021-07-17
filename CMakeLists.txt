@@ -7,7 +7,7 @@ project(ermia)
 cmake_minimum_required(VERSION 3.8)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
-set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags -lpmem")
 link_libraries(${LINK_FLAGS})
 
 # Use masstree for index
