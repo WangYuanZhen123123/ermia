@@ -18,6 +18,41 @@ extern "C" void *log_write_daemon_thunk(void *arg) {
   return NULL;
 }
 
+extern "C" void *log_write_daemon_thunk2(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon2();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk3(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon3();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk4(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon4();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk5(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon5();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk6(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon6();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk7(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon7();
+  return NULL;
+}
+
+extern "C" void *log_write_daemon_thunk8(void *arg) {
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon8();
+  return NULL;
+}
+
 enum { DAEMON_HAS_WORK = 0x1, DAEMON_SLEEPING = 0x2 };
 
 }  // end anonymous namespace
@@ -46,7 +81,11 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
       _waiting_for_durable(false),
       _waiting_for_dmark(false),
       _write_daemon_should_wake(false),
+      _write_daemon_should_wake2(false),
       _write_daemon_should_stop(false),
+      _write_daemon_should_stop2(false),
+      _sync_comp(false),
+      _sync(-7),
       _lsn_offset(_lm.get_durable_mark().offset()) {
   _logbuf_partition_size =
       config::log_buffer_mb * config::MB / config::log_redo_partitions;
@@ -72,6 +111,34 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     int err =
         pthread_create(&_write_daemon_tid, NULL, &log_write_daemon_thunk, this);
     THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
+
+    int err2 =
+        pthread_create(&_write_daemon_tid2, NULL, &log_write_daemon_thunk2, this);
+    THROW_IF(err2, os_error, err2, "Unable to start log writer daemon thread");
+
+    int err3 =
+        pthread_create(&_write_daemon_tid3, NULL, &log_write_daemon_thunk3, this);
+    THROW_IF(err3, os_error, err3, "Unable to start log writer daemon thread");
+
+    int err4 =
+        pthread_create(&_write_daemon_tid4, NULL, &log_write_daemon_thunk4, this);
+    THROW_IF(err4, os_error, err4, "Unable to start log writer daemon thread");
+
+    int err5 =
+        pthread_create(&_write_daemon_tid5, NULL, &log_write_daemon_thunk5, this);
+    THROW_IF(err5, os_error, err5, "Unable to start log writer daemon thread");
+
+    int err6 =
+        pthread_create(&_write_daemon_tid6, NULL, &log_write_daemon_thunk6, this);
+    THROW_IF(err6, os_error, err6, "Unable to start log writer daemon thread");
+
+    int err7 =
+        pthread_create(&_write_daemon_tid7, NULL, &log_write_daemon_thunk7, this);
+    THROW_IF(err7, os_error, err7, "Unable to start log writer daemon thread");
+
+    int err8 =
+        pthread_create(&_write_daemon_tid8, NULL, &log_write_daemon_thunk8, this);
+    THROW_IF(err8, os_error, err8, "Unable to start log writer daemon thread");
   }
 }
 
@@ -79,8 +146,30 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr() {
   os_finish();
 
   _write_daemon_should_stop = true;
+  _write_daemon_should_stop2 = true;
   int err = pthread_join(_write_daemon_tid, NULL);
   LOG_IF(FATAL, err) << "Unable to join log writer daemon thread";
+
+  int err2 = pthread_join(_write_daemon_tid2, NULL);
+  LOG_IF(FATAL, err2) << "Unable to join log writer daemon thread";
+
+  int err3 = pthread_join(_write_daemon_tid3, NULL);
+  LOG_IF(FATAL, err3) << "Unable to join log writer daemon thread";
+
+  int err4 = pthread_join(_write_daemon_tid4, NULL);
+  LOG_IF(FATAL, err4) << "Unable to join log writer daemon thread";
+
+  int err5 = pthread_join(_write_daemon_tid5, NULL);
+  LOG_IF(FATAL, err5) << "Unable to join log writer daemon thread";
+
+  int err6 = pthread_join(_write_daemon_tid6, NULL);
+  LOG_IF(FATAL, err6) << "Unable to join log writer daemon thread";
+
+  int err7 = pthread_join(_write_daemon_tid7, NULL);
+  LOG_IF(FATAL, err7) << "Unable to join log writer daemon thread";
+
+  int err8 = pthread_join(_write_daemon_tid8, NULL);
+  LOG_IF(FATAL, err8) << "Unable to join log writer daemon thread";
 }
 
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
@@ -387,7 +476,7 @@ int sm_log_alloc_mgr::open_segment_for_read(segment_id *sid) {
 /* Figure out the corresponding segments in the logbuf and flush them.
  * The caller should enter/exit_rcu().
  */
-segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
+segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t start_dlsn_offset, uint64_t new_dlsn_offset,
                                               bool update_dmark) {
   ASSERT(!config::is_backup_srv() || config::command_log);
   /* The primary ships log records at log buffer flush boundaries, and log
@@ -404,11 +493,12 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
    * fine as we skip it during redo.
    */
   LSN dlsn = _lm.get_durable_mark();
-  ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
-  ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+  //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+  //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
   auto *durable_sid = _lm.get_segment(dlsn.segment());
   ALWAYS_ASSERT(durable_sid);
-  uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+  //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+  uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
   int active_fd = _lm.open_for_write(durable_sid);
   DEFER(os_close(active_fd));
 
@@ -428,7 +518,8 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
      segment to obtain an LSN.
    */
   bool new_seg = false;
-  while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+  //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+  while (start_dlsn_offset < new_dlsn_offset) {
     segment_id *new_sid;
     uint64_t new_offset;
     uint64_t new_byte;
@@ -455,15 +546,16 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
       new_byte = new_sid->buf_offset(new_dlsn_offset);
     }
 
-    ASSERT(durable_byte == _logbuf->read_begin());
-    ASSERT(durable_byte < new_byte);
-    ASSERT(new_byte <= _logbuf->write_end());
+    //ASSERT(durable_byte == _logbuf->read_begin());
+    //ASSERT(durable_byte < new_byte);
+    //ASSERT(new_byte <= _logbuf->write_end());
 
     /* Log insertions don't advance the buffer window because
        they tend to complete out of order. Do it for them now
        that we know the correct value to use. The only exception
        is when we read and replay the log buffer directly.
      */
+    //uint64_t nbytes = new_byte - durable_byte;
     uint64_t nbytes = new_byte - durable_byte;
     if (_logbuf->available_to_read() < nbytes) {
       _logbuf->advance_writer(new_byte);
@@ -473,7 +565,8 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
 
     // perform the write
     auto *buf = _logbuf->read_buf(durable_byte, nbytes);
-    auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+    //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+    auto file_offset = durable_sid->offset(start_dlsn_offset);
 
     // Ship the log to backups, unless we're doing async log shipping
     if (!config::command_log &&
@@ -759,6 +852,7 @@ void sm_log_alloc_mgr::release(log_allocation *x) {
       DEFER(_write_daemon_mutex.unlock());
 
       _kick_log_write_daemon();
+      //_kick_log_write_daemon2();
     }
   }
 }
@@ -809,17 +903,20 @@ void sm_log_alloc_mgr::_log_write_daemon() {
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
-
+  //std::cerr<<"rcu1"<<std::endl;
   // every 100 ms or so, update the durable mark on disk
   static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000) * 1000 * 1000;
   uint64_t last_dmark = stopwatch_t::now();
   while (true) {
+    bool has_newseg =false;
+
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t min_tls = smallest_tls_lsn_offset();
-    uint64_t new_dlsn_offset = min_tls;
+    //uint64_t new_dlsn_offset = min_tls;
+    sync_new_dlsn_offset = min_tls;
     if (!config::IsLoading() && config::num_active_backups > 0 && !config::command_log) {
       uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
-      if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
+      if (sync_new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
         // Find the maximum that will cause us to ship at most [group_commit_size_kb]
         uint64_t max = 0;
         for (uint64_t i = 0; i < config::log_redo_partitions; ++i) {
@@ -828,12 +925,201 @@ void sm_log_alloc_mgr::_log_write_daemon() {
             max = off;
           }
         }
-        new_dlsn_offset = max;
+        sync_new_dlsn_offset = max;
       }
     }
     segment_id *durable_sid = nullptr;
-    if (new_dlsn_offset > _durable_flushed_lsn_offset) {
-      durable_sid = PrimaryFlushLog(new_dlsn_offset);
+    //std::cerr<<"new_dlsn_offset1: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset1: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      _sync_write_daemon_mutex.lock();
+      _write_daemon_cond2.signal();
+      _write_daemon_cond3.signal();
+      _write_daemon_cond4.signal();
+      _write_daemon_cond5.signal();
+      _write_daemon_cond6.signal();
+      _write_daemon_cond7.signal();
+      _write_daemon_cond8.signal();
+      _sync_write_daemon_mutex.unlock();
+      uint64_t start_dlsn_offset = (sync_new_dlsn_offset + (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2)/2;
+      //uint64_t start_dlsn_offset = _durable_flushed_lsn_offset;
+      uint64_t end_dlsn_offset = sync_new_dlsn_offset;
+      //durable_sid = PrimaryFlushLog(start_dlsn_offset, new_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset); 
+
+      ASSERT(!config::is_backup_srv() || config::command_log);
+      /* The primary ships log records at log buffer flush boundaries, and log
+       * flushing respects segment boundaries. Threads trying to carve out a range
+       * of LSN offset also need to respect segment boundaries, boundary-crossing
+       * threads will try again after realizing the current segment isn't enough to
+       * hold the requested range, hence we might have daed zones that don't
+       * correspond to any valid range.
+       *
+       * When shipping log records, we never ship across buffer boundaries or
+       * segments. The backup always receives a chunk of the log guaranteed to
+       * reside in a single segment, but the range might extend into the dead zone.
+       * So we might have a durable LSN in the dead zone on the backup, which is
+       * fine as we skip it during redo.
+       */
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      //std::cerr<<"open1"<<std::endl;
+      /* The block list contains a fluctuating---and usually fairly
+        short---set of log_allocation objects. Releasing or
+        discarding a block marks it as dead (without removing it)
+        and removes all dead blocks that follow it. The list is
+        primed at start-up with the durable LSN (as determined by
+        startup/recovery), and so is guaranteed to always contain
+        at least one (perhaps dead) node that later requests can
+        use to acquire a proper LSN.
+
+        Our goal is to find the oldest (= last) live block in the
+        list, and write out everything before that block's offset.
+
+        Once we know the offset, we can look up the corresponding
+        segment to obtain an LSN.
+      */
+      bool new_seg = false;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+          /* Watch out for segment boundaries!
+
+          The true end of a segment is somewhere in the last
+          MIN_LOG_BLOCK_SIZE bytes, with the exact value
+          determined by the start_offset of its
+          successor. Fortunately, any request that lands in
+          this "red zone" also ensures that the next segment
+          has been created, so we can safely access it.
+          */
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+    
+        //ASSERT(durable_byte == _logbuf->read_begin());
+        //ASSERT(durable_byte < new_byte);
+        //ASSERT(new_byte <= _logbuf->write_end());
+
+        /* Log insertions don't advance the buffer window because
+          they tend to complete out of order. Do it for them now
+          that we know the correct value to use. The only exception
+          is when we read and replay the log buffer directly.
+        */
+
+        if(has_newseg)
+        {
+          start_dlsn_offset = _durable_flushed_lsn_offset;
+          end_dlsn_offset = new_offset;
+          durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+        }
+
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_byte);
+        }
+        //THROW_IF(_logbuf->available_to_read() < nbytes, log_file_error,
+        //         "Not enough log bufer to read");
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+          config::persist_policy != config::kPersistAsync &&
+          config::num_active_backups &&
+          !config::IsLoading()) {
+          PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+          if (new_seg) {
+            new_seg = false;
+          }
+        }
+
+        uint64_t n = 0;
+        // Note: Here we actually allow skip log writing on the primary node even in
+        // a primary/backup setting, but for benchmarking purpose only. A fully
+        // 'correct' setting is to ensure persistence at *all* nodes, including the
+        // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+        // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+
+        if (!config::command_log) {
+          // Dequeue transactions pending persistence (if pipelined group commit is on)
+          PrimaryCommitPersistedWork(new_offset);
+        }
+    
+        _sync_write_daemon_mutex.lock();
+        //DEFER(_sync_write_daemon_mutex.unlock());
+        // After this the buffer space will become available for consumption
+        if(_sync < 0 )
+        {
+          //std::cerr<<"_sync_comp1: "<< _sync_comp<<std::endl;
+          _sync_write_daemon_cond.wait(_sync_write_daemon_mutex);
+          //std::cerr<<"_sync_comp11: "<< _sync_comp<<std::endl;
+        }
+        //_sync_comp = false;
+        _sync = _sync-7;
+        _sync_write_daemon_mutex.unlock();
+        //std::cerr<<"_sync_comp3: "<< _sync_comp<<std::endl;
+        _logbuf->advance_reader(new_byte);
+        has_newseg = false;
+
+        // segment change?
+        if (new_sid != durable_sid) {
+          os_close(active_fd);
+          active_fd = _lm.open_for_write(new_sid);
+          ASSERT(!new_seg);
+          new_seg = true;
+        }
+
+        // update values for next round
+        durable_sid = new_sid;
+        _durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+
+    
+        /*if (update_dmark) {
+          // Have to use LSN::make (instead of durable_sid->make_lsn which checks
+          // lsn offset ownership): If we're on a backup server, then this new
+          // durable lsn offset might end up in the deadzone which isn't contained
+          // by any sid, because we ship at log buffer flush boundaries (no info
+          // for the next segment until the next shipping).
+          _lm.update_durable_mark(
+            LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
+        }*/
+      }
     }
 
     RCU::rcu_exit();
@@ -875,7 +1161,20 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     // time to quit? (only if everything in the log reached disk)
     if (_write_daemon_should_stop and
         cur_offset == _durable_flushed_lsn_offset) {
-      if (new_dlsn_offset == cur_offset) break;
+      if (sync_new_dlsn_offset == cur_offset) 
+      {
+        should_break = true;
+        _sync_write_daemon_mutex.lock();
+        _write_daemon_cond2.signal();
+        _write_daemon_cond3.signal();
+        _write_daemon_cond4.signal();
+        _write_daemon_cond5.signal();
+        _write_daemon_cond6.signal();
+        _write_daemon_cond7.signal();
+        _write_daemon_cond8.signal();
+        _sync_write_daemon_mutex.unlock();
+        break;
+      }
     }
 
     // time to sleep?
@@ -905,6 +1204,973 @@ void sm_log_alloc_mgr::_log_write_daemon() {
   }
 }
 
+/* This guy's only job is to write released log blocks to disk. In
+   steady state, new log blocks will be released during each log
+   write, keeping the daemon busy most of the time. Whenever the log
+   is fully durable, it sleeps. During a clean shutdown, the daemon
+   will exit only after it has written everything to disk. It is the
+   system's responsibility to ensure that the shutdown flag is not
+   raised while new log records might still be generated.
+ */
+void sm_log_alloc_mgr::_log_write_daemon2() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = _durable_flushed_lsn_offset;
+      uint64_t end_dlsn_offset = (_durable_flushed_lsn_offset + (_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond2.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond2.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon3() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = (_durable_flushed_lsn_offset + (_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2)/2;
+      uint64_t end_dlsn_offset = (_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond3.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond3.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon4() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = (_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2;
+      uint64_t end_dlsn_offset = ((_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2 + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond4.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond4.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon5() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = ((_durable_flushed_lsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2) / 2 + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2;
+      uint64_t end_dlsn_offset = (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond5.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond5.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon6() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2;
+      uint64_t end_dlsn_offset = ((sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2 + (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond6.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond6.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon7() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = ((sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2 + (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2)/2;
+      uint64_t end_dlsn_offset = (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond7.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond7.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
+void sm_log_alloc_mgr::_log_write_daemon8() {
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
+ 
+  while (true) {
+    bool has_newseg = false;
+
+    segment_id *durable_sid = nullptr;
+    //std::cerr<<"new_dlsn_offset2: " << sync_new_dlsn_offset <<std::endl;
+    //std::cerr<<"_durable_flushed_lsn_offset2: " << _durable_flushed_lsn_offset <<std::endl;
+    if (sync_new_dlsn_offset > _durable_flushed_lsn_offset) {
+      //std::cerr<<"here23"<<std::endl;
+      uint64_t start_dlsn_offset = (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2;
+      uint64_t end_dlsn_offset = (sync_new_dlsn_offset + (sync_new_dlsn_offset + (sync_new_dlsn_offset + _durable_flushed_lsn_offset)/2)/2)/2;
+      //durable_sid = PrimaryFlushLog(_durable_flushed_lsn_offset, end_dlsn_offset);
+      //durable_sid = PrimaryFlushLog(new_dlsn_offset);
+
+          ASSERT(!config::is_backup_srv() || config::command_log);
+
+      //std::cerr<<"here22"<<std::endl;
+      LSN dlsn = _lm.get_durable_mark();
+      //ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+      //ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+      durable_sid = _lm.get_segment(dlsn.segment());
+      ALWAYS_ASSERT(durable_sid);
+      //uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+      uint64_t durable_byte = durable_sid->buf_offset(start_dlsn_offset);
+      //std::cerr<<"open22"<<std::endl;
+      int active_fd = _lm.open_for_write(durable_sid);
+      DEFER(os_close(active_fd));
+
+      bool new_seg = false;
+      //int thread2=0;
+      //while (_durable_flushed_lsn_offset < new_dlsn_offset) {
+      while (start_dlsn_offset < end_dlsn_offset) {
+        //std::cerr<<"------thread2------"<<thread2++<<std::endl;
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < sync_new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+      
+          new_sid = _lm.get_segment((durable_sid->segnum + 1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          has_newseg = true;
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                 << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
+          new_sid = durable_sid;
+          new_offset = end_dlsn_offset;
+          new_byte = new_sid->buf_offset(end_dlsn_offset);
+        }
+
+        if(has_newseg){
+          _sync_write_daemon_mutex.lock();
+          has_newseg =false;
+        
+          _sync++;
+          if(_sync >= 0){
+            _sync_write_daemon_cond.signal();
+          }
+          _write_daemon_cond8.wait(_sync_write_daemon_mutex);
+          _sync_write_daemon_mutex.unlock();
+          break;
+        }
+        //uint64_t nbytes = new_byte - durable_byte;
+        uint64_t nbytes = new_byte - durable_byte;
+        if (_logbuf->available_to_read() < nbytes) {
+          _logbuf->advance_writer(new_sid->buf_offset(sync_new_dlsn_offset));
+        }
+
+        // perform the write
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
+        //auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+        auto file_offset = durable_sid->offset(start_dlsn_offset);
+
+        // Ship the log to backups, unless we're doing async log shipping
+        if (!config::command_log &&
+            config::persist_policy != config::kPersistAsync &&
+            config::num_active_backups &&
+            !config::IsLoading()) {
+            PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
+            if (new_seg) {
+              new_seg = false;
+            }
+          }
+
+        uint64_t n = 0;
+    // Note: Here we actually allow skip log writing on the primary node even in
+    // a primary/backup setting, but for benchmarking purpose only. A fully
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
+        if (config::null_log_device && !config::IsLoading()) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+            rep::async_ship_cond.notify_all();
+          }
+        }
+        LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+        
+        //std::cerr<<"fuck2"<<std::endl;
+        _sync_write_daemon_mutex.lock();
+        has_newseg =false;
+        durable_sid = new_sid;
+        //_durable_flushed_lsn_offset = new_offset;
+        start_dlsn_offset = new_offset;
+        durable_byte = new_byte;
+        //_sync_comp = true;
+        //std::cerr<<"_sync_comp2: "<< _sync_comp<<std::endl;
+        _sync++;
+        if(_sync >= 0){
+          _sync_write_daemon_cond.signal();
+        }
+        _write_daemon_cond8.wait(_sync_write_daemon_mutex);
+        _sync_write_daemon_mutex.unlock();
+    
+      }
+    }
+
+    RCU::rcu_exit();
+    
+    if (should_break == true)
+    {
+      should_break = false;
+      break;
+    }
+    
+    RCU::rcu_enter();
+  }
+}
+
 /* Wake up the log write daemon if it happens to be alseep.
 
    WARNING: caller must hold the log write mutex!
@@ -912,5 +2178,14 @@ void sm_log_alloc_mgr::_log_write_daemon() {
 void sm_log_alloc_mgr::_kick_log_write_daemon() {
   _write_daemon_should_wake = true;
   _write_daemon_cond.signal();
+}
+
+/* Wake up the log write daemon if it happens to be alseep.
+
+   WARNING: caller must hold the log write mutex!
+ */
+void sm_log_alloc_mgr::_kick_log_write_daemon2() {
+  _write_daemon_should_wake2 = true;
+  _write_daemon_cond2.signal();
 }
 }  // namespace ermia

@@ -143,13 +143,14 @@ window_buffer::window_buffer(size_t bufsz, size_t start_offset)
   THROW_IF(_data == MAP_FAILED, os_error, errno,
            "mmap failed to acquire address space");
   DEFER_UNLESS(keep_it, munmap(_data, map_size));
+  LOG(INFO) << "mmap central log buffer  " << map_size;
 
   void *data2 =
       mmap(_data, bufsz, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED, fd, 0);
   THROW_IF(_data != data2, os_error, errno, "failed to mmap temp file");
 
   void *data3 = mmap(_data + bufsz, bufsz, PROT_READ | PROT_WRITE,
-                     MAP_FIXED | MAP_SHARED, fd, 0);
+                    MAP_FIXED | MAP_SHARED, fd, 0);
   THROW_IF(_data + bufsz != data3, os_error, errno, "failed to mmap temp file");
   keep_it = true;
 #endif

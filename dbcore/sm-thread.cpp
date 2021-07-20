@@ -83,6 +83,7 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       sleep_when_idle(true),
       is_physical(is_physical) {
   int rc = pthread_attr_init (&thd_attr);
+  std::cerr<<"----sys_cpu:   "<< sys_cpu<<std::endl;
   pthread_create(&thd, &thd_attr, &Thread::StaticIdleTask, (void *)this);
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
