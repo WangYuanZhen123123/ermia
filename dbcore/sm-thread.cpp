@@ -24,8 +24,11 @@ bool DetectCPUCores() {
   if (stat("/sys/devices/system/node", &info) != 0) {
     return false;
   }
+  std::cerr<<"-----numa_max_node()-----"<<numa_max_node()<<std::endl;
+  std::cerr<<"-----std::thread::hardware_concurrency()-----"<<std::thread::hardware_concurrency()<<std::endl;
 
   for (uint32_t node = 0; node < numa_max_node() + 1; ++node) {
+    
     uint32_t cpu = 0;
     while (cpu < std::thread::hardware_concurrency()) {
       std::string dir_name = "/sys/devices/system/node/node" +
@@ -83,7 +86,7 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       sleep_when_idle(true),
       is_physical(is_physical) {
   int rc = pthread_attr_init (&thd_attr);
-  std::cerr<<"----sys_cpu:   "<< sys_cpu<<std::endl;
+  
   pthread_create(&thd, &thd_attr, &Thread::StaticIdleTask, (void *)this);
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
@@ -108,6 +111,7 @@ PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
       auto &c = cpu_cores[i];
       if (c.node == n) {
         uint32_t sys_cpu = c.physical_thread;
+        std::cerr<<"----sys_cpu on node"<< n <<":   "<< sys_cpu<<std::endl;
         new (threads + core) Thread(node, core, sys_cpu, true);
         for (auto &sib : c.logical_threads) {
           ++core;
@@ -208,6 +212,7 @@ retry:
     goto retry;
   }
   ALWAYS_ASSERT(pos < max_threads_per_node);
+  std::cerr<<"-----get_thread on node"<<node<<"-----"<<pos<<std::endl;
   return t;
 }
 

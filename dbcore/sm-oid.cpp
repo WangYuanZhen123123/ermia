@@ -150,19 +150,34 @@ OID thread_allocate(sm_oid_mgr_impl *om, FID f) {
   // correct cache entry definitely exists now... but may be empty
   auto it = thread_cache(om, f);
   ASSERT(it->f == f);
+  int error1 = it->nentries;
+  int error2 = -10;
+  uint32_t capacity1 = 9, capacity2 = 9, hiwater = 9, oid = 1;
+  
   if (not it->nentries) {
     om->lock_file(f);
     DEFER(om->unlock_file(f));
     auto *alloc = om->get_allocator(f);
+    size_t l1cap = alloc->L1_CAPACITY;
+    size_t l2cap = alloc->L2_CAPACITY;
+    size_t l3cap = alloc->L3_MAX_WORDS;
+    bool seccese;
     if (not alloc->fill_cache(&*it)) {
+      error2 = it->nentries;
       auto cbump = alloc->propose_capacity(1);
       oid_array *oa = om->get_array(f);
       oa->ensure_size(cbump);
+      capacity1 = alloc->head.capacity_mark;
       alloc->head.capacity_mark = cbump;
-      alloc->fill_cache(&*it);
+      capacity2 = alloc->head.capacity_mark;
+      hiwater = alloc->head.hiwater_mark;
+      seccese = alloc->fill_cache(&*it);
     }
+    oid = it->entries[it->nentries];
     ASSERT(it->nentries);
   }
+  int error3 = it->nentries;
+  
   return it->entries[--it->nentries];
 }
 

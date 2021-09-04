@@ -25,7 +25,7 @@ typedef uint32_t FID;
 
 static OID const INVALID_OID = ~uint32_t{0};
 
-static size_t const NUM_LOG_SEGMENT_BITS = 4;
+static size_t const NUM_LOG_SEGMENT_BITS = 5;
 static size_t const NUM_LOG_SEGMENTS = 1 << NUM_LOG_SEGMENT_BITS;
 
 /* A "fat" pointer that carries an address, augmented with encoded
@@ -119,12 +119,12 @@ struct fat_ptr {
   static uint64_t const ASI_XID_FLAG = ASI_XID << ASI_START_BIT;
   static uint64_t const ASI_CHK_FLAG = ASI_CHK << ASI_START_BIT;
 
-  static uint64_t const ASI_SEGMENT_MASK = 0x0f;
+  static uint64_t const ASI_SEGMENT_MASK = 0x1f;
 
   static_assert(not((ASI_LOG | ASI_HEAP | ASI_EXT | ASI_XID | ASI_CHK) &
                     ~ASI_MASK),
                 "Go fix ASI_MASK");
-  static_assert(NUM_LOG_SEGMENTS == 16, "The constant above is out of sync");
+  static_assert(NUM_LOG_SEGMENTS == 32, "The constant above is out of sync");
   static_assert(FLAG_BITS >= 1 + 1 + NUM_LOG_SEGMENT_BITS, "Need more bits");
 
   /* Make a fat_ptr that points to an address in memory.

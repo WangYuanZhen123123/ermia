@@ -125,6 +125,8 @@ inline Thread *GetThread(uint16_t from, bool physical) {
 }
 
 inline Thread *GetThread(bool physical /* don't care where */) {
+  //for (uint16_t i = config::numa_nodes; i > 0; i--) {
+  // auto *t = thread_pools[i-1].GetThread(physical);
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
     auto *t = thread_pools[i].GetThread(physical);
     if (t) {
@@ -171,6 +173,8 @@ struct Runner {
   }
 
   inline bool TryImpersonate(bool sleep_when_idle = true) {
+    //std::cerr<<"-----try on node-----"<<std::endl;
+
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
     if (me) {
@@ -183,6 +187,9 @@ struct Runner {
   inline bool TryImpersonate(uint32_t node, bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(node, physical);
+
+    std::cerr<<"-----try on node"<<node<<"-----"<<std::endl;
+
     if (me) {
       LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;

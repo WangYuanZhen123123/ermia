@@ -108,37 +108,80 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     _write_daemon_mutex.lock();
     DEFER(_write_daemon_mutex.unlock());
 
+    //int numa_num = numa_max_node() + 1;
+    //int thread_id = std::thread::hardware_concurrency() / numa_num - 1;
+
     int err =
         pthread_create(&_write_daemon_tid, NULL, &log_write_daemon_thunk, this);
     THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset;
+    //CPU_ZERO(&cpuset);
+    //CPU_SET(thread_id, &cpuset);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid, sizeof(cpu_set_t), &cpuset);
 
     int err2 =
         pthread_create(&_write_daemon_tid2, NULL, &log_write_daemon_thunk2, this);
     THROW_IF(err2, os_error, err2, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset2;
+    //CPU_ZERO(&cpuset2);
+    //CPU_SET(thread_id, &cpuset2);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid2, sizeof(cpu_set_t), &cpuset2);
 
     int err3 =
         pthread_create(&_write_daemon_tid3, NULL, &log_write_daemon_thunk3, this);
     THROW_IF(err3, os_error, err3, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset3;
+    //CPU_ZERO(&cpuset3);
+    //CPU_SET(thread_id, &cpuset3);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid3, sizeof(cpu_set_t), &cpuset3);
 
     int err4 =
         pthread_create(&_write_daemon_tid4, NULL, &log_write_daemon_thunk4, this);
     THROW_IF(err4, os_error, err4, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset4;
+    //CPU_ZERO(&cpuset4);
+    //CPU_SET(thread_id, &cpuset4);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid4, sizeof(cpu_set_t), &cpuset4);
 
     int err5 =
         pthread_create(&_write_daemon_tid5, NULL, &log_write_daemon_thunk5, this);
     THROW_IF(err5, os_error, err5, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset5;
+    //CPU_ZERO(&cpuset5);
+    //CPU_SET(thread_id, &cpuset5);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid5, sizeof(cpu_set_t), &cpuset5);
 
     int err6 =
         pthread_create(&_write_daemon_tid6, NULL, &log_write_daemon_thunk6, this);
     THROW_IF(err6, os_error, err6, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset6;
+    //CPU_ZERO(&cpuset6);
+    //CPU_SET(thread_id, &cpuset6);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid6, sizeof(cpu_set_t), &cpuset6);
 
     int err7 =
         pthread_create(&_write_daemon_tid7, NULL, &log_write_daemon_thunk7, this);
     THROW_IF(err7, os_error, err7, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset7;
+    //CPU_ZERO(&cpuset7);
+    //CPU_SET(thread_id, &cpuset7);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid7, sizeof(cpu_set_t), &cpuset7);
 
     int err8 =
         pthread_create(&_write_daemon_tid8, NULL, &log_write_daemon_thunk8, this);
     THROW_IF(err8, os_error, err8, "Unable to start log writer daemon thread");
+    //cpu_set_t cpuset8;
+    //CPU_ZERO(&cpuset8);
+    //CPU_SET(thread_id, &cpuset8);
+    //thread_id = thread_id -2;
+    //pthread_setaffinity_np(_write_daemon_tid8, sizeof(cpu_set_t), &cpuset8);
   }
 }
 
@@ -900,6 +943,8 @@ uint64_t sm_log_alloc_mgr::smallest_tls_lsn_offset() {
    raised while new log records might still be generated.
  */
 void sm_log_alloc_mgr::_log_write_daemon() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1213,6 +1258,8 @@ void sm_log_alloc_mgr::_log_write_daemon() {
    raised while new log records might still be generated.
  */
 void sm_log_alloc_mgr::_log_write_daemon2() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1350,6 +1397,8 @@ void sm_log_alloc_mgr::_log_write_daemon2() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon3() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1487,6 +1536,8 @@ void sm_log_alloc_mgr::_log_write_daemon3() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon4() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1624,6 +1675,8 @@ void sm_log_alloc_mgr::_log_write_daemon4() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon5() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1761,6 +1814,8 @@ void sm_log_alloc_mgr::_log_write_daemon5() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon6() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1898,6 +1953,8 @@ void sm_log_alloc_mgr::_log_write_daemon6() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon7() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -2035,6 +2092,8 @@ void sm_log_alloc_mgr::_log_write_daemon7() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon8() {
+  numa_run_on_node(1);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());

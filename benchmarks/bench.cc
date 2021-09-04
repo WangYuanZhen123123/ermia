@@ -348,6 +348,7 @@ void bench_runner::measure_read_view_lsn() {
 }
 
 void bench_runner::start_measurement() {
+  std::cerr<<"------start_measurement()------"<<std::endl;
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();

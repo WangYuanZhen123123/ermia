@@ -15,7 +15,7 @@ void sm_allocator::destroy(sm_allocator *alloc) { alloc->~sm_allocator(); }
 
 sm_allocator::header_data::header_data(dynarray &&self)
     : backing_store(std::move(self)),
-      capacity_mark(1 * 1024 * 1024),
+      capacity_mark(2 * 1024 * 1024),
       hiwater_mark(0),
       l1_size(0),
       l2_size(0xdead),
@@ -140,7 +140,7 @@ size_t sm_allocator::alloc_size() {
 }
 
 OID sm_allocator::propose_capacity(size_t align) {
-  auto pc = min(5 * head.capacity_mark / 4, MAX_CAPACITY_MARK);
+  auto pc = min(head.capacity_mark / 4 * 5, MAX_CAPACITY_MARK);
   auto delta = align_down(pc - head.capacity_mark, align);
   return delta ? head.capacity_mark + delta : 0;
 }
