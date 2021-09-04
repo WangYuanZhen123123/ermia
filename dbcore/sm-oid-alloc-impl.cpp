@@ -140,7 +140,7 @@ size_t sm_allocator::alloc_size() {
 }
 
 OID sm_allocator::propose_capacity(size_t align) {
-  auto pc = min(5 * head.capacity_mark / 4, MAX_CAPACITY_MARK);
+  auto pc = min(head.capacity_mark / 4 * 5, MAX_CAPACITY_MARK);
   auto delta = align_down(pc - head.capacity_mark, align);
   return delta ? head.capacity_mark + delta : 0;
 }
