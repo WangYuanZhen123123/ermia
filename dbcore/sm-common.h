@@ -438,6 +438,8 @@ struct os_condvar : os_condvar_pod {
  */
 char *os_asprintf(char const *msg, ...) __attribute__((format(printf, 1, 2)));
 
+void os_finish();
+
 int os_open(char const *path, int flags);
 
 int os_openat(int dfd, char const *fname, int flags);

@@ -10,6 +10,21 @@
 #include <unistd.h>
 #include <sys/fcntl.h>
 #include <vector>
+#include <cstring>
+#include <iostream>
+#include <libpmem.h>
+#include <map>
+#include "sm-config.h"
+
+
+#define LAYOUT_NAME "intro_1"
+//#define PMEM_LEN 17179869184
+#define PMEM_LEN (config::log_segment_mb *1024 *1024)
+#define PMEM_FILE 1024
+//char file[64]="/mnt/pmem1/ermiadb_log/";
+int seq=0;
+std::map<int, char*> pmem;
+std::map<std::string, int> pmem_reverse;
 
 namespace ermia {
 
@@ -40,17 +55,66 @@ int os_open(char const *path, int flags) {
 }
 
 int os_openat(int dfd, char const *fname, int flags) {
-  int fd = openat(dfd, fname, flags, S_IRUSR | S_IWUSR);
-  LOG_IF(FATAL, fd < 0) << "Unable to open file " << fname << "(" << fd << "(";
+  
+  char file_name[64], fname1[64];
+  std::string fname2= fname;
+  strcpy(fname1, fname);
+  //int len = strlen(fname1);
+  //std::cerr<<"len:   "<<len<<std::endl;
+  //std::cerr<<"open      fname1:  "<<fname1<<"    pmem_reverse.count(fname1):  "<< pmem_reverse.count(fname1)<<std::endl;
+  //int fd = openat(dfd, fname, flags, S_IRUSR | S_IWUSR);
+  //LOG_IF(FATAL, fd < 0) << "Unable to open file " << fname << "(" << fd << ")";
+  
+  if(flags & O_CREAT && !pmem_reverse.count(fname2))
+  {
+    
+    //strcpy(file_name, file);
+    char *file2 = (char*)(ermia::config::log_dir.data());
+    strcpy(file_name, file2);
+
+    strcat(file_name, fname);
+    //std::cerr<< file_name<< std::endl;
+    char *pmemaddr;
+    size_t mapped_len;
+    int is_pmem;
+
+    if ((pmemaddr = (char*)pmem_map_file(file_name, PMEM_LEN, PMEM_FILE_CREATE,
+                0666, &mapped_len, &is_pmem)) == NULL) {
+        std::cerr<< "pmem_map_file error"<< std::endl;
+      }
+    pmem[seq] = pmemaddr;
+     
+    pmem_reverse[fname2] = seq;
+
+    int fd=seq;
+    ++seq;
+    //std::cerr<<"create      seq: "<< seq<<"    fname:  "<< fname1<<"   openfd:   "<< fd<<std::endl;
+    return fd;
+  }
+  int fd= pmem_reverse[fname2];
+  //std::cerr<<"openfd:   "<<fd<<std::endl;
   return fd;
+
+  
 }
 
 void os_write(int fd, void const *buf, size_t bufsz) {
-  size_t err = write(fd, buf, bufsz);
-  LOG_IF(FATAL, err != bufsz) << "Error writing " << bufsz << " bytes to file";
+  //size_t err = write(fd, buf, bufsz);
+  //LOG_IF(FATAL, err != bufsz) << "Error writing " << bufsz << " bytes to file";
+  
+  char *pmemaddr = pmem[fd];
+  pmem_memcpy_persist(pmemaddr, buf, bufsz);
+  size_t n = bufsz;
 }
 
 size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset) {
+  //std::cerr<<"write size:   "<<bufsz<<std::endl;
+  char *pmemaddr = pmem[fd];
+  pmemaddr += offset;
+  pmem_memcpy_persist(pmemaddr, buf, bufsz);
+  size_t n = bufsz;
+  
+  /*
   size_t n = 0;
   while (n < bufsz) {
     ssize_t m = pwrite(fd, buf + n, bufsz - n, offset + n);
@@ -60,19 +124,26 @@ size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset) {
     THROW_IF(m < 0, os_error, errno,
              "Error writing %zd bytes to file at offset %zd", bufsz, offset);
     n += m;
-  }
+  }*/
+  
   return n;
 }
 
 size_t os_pread(int fd, char *buf, size_t bufsz, off_t offset) {
   size_t n = 0;
+  /*
   while (n < bufsz) {
     ssize_t m = pread(fd, buf + n, bufsz - n, offset + n);
     if (not m) break;
     LOG_IF(FATAL, m < 0)
       << "Error reading " << bufsz << " bytes from file at offset " << offset;
     n += m;
-  }
+  }*/
+  char *pmemaddr = pmem[fd];
+  pmemaddr += offset;
+  memcpy(buf, pmemaddr, bufsz);
+  //pmem_memcpy(buf, pmemaddr, bufsz, PMEM_F_MEM_NODRAIN);
+  n= bufsz;
   return n;
 }
 
@@ -83,21 +154,76 @@ void os_truncate(char const *path, size_t size) {
 }
 
 void os_truncateat(int dfd, char const *path, size_t size) {
+  if(path[0] == 'l')
+    return;
   int fd = os_openat(dfd, path, O_WRONLY | O_CREAT);
   DEFER(os_close(fd));
 
-  int err = ftruncate(fd, size);
+  char file_name[64];
+  //strcpy(file_name, file);
+  char *file2 = (char*)(ermia::config::log_dir.data());
+  strcpy(file_name, file2);
+
+  strcat(file_name, path);
+  int err = truncate(file_name, size);
+  /*
+  if(size == 0)
+  {
+    char path1[64];
+    strcpy(path1, path);
+    int fd1 = pmem_reverse[path1];
+    pmem.erase(fd1);
+  }*/
+  //std::cerr<<"dfd : "<<dfd<<"   fd : "<<fd<<"   path : "<< path<<"   size : "<<size<<std::endl;
+  /*std::map<char*, int>::reverse_iterator   iter;
+     for(iter = pmem_reverse.rbegin(); iter != pmem_reverse.rend(); iter++){
+          std::cerr<<iter->first<<"  ->  "<<iter->second<<std::endl;
+     }
+     */
   THROW_IF(err, os_error, errno, "Error truncating file %s to %zd bytes", path,
            size);
+  
+  //int err = ftruncate(fd, size);
+  //THROW_IF(err, os_error, errno, "Error truncating file %s to %zd bytes", path,
+  //         size);
 }
 
 void os_renameat(int fromfd, char const *from, int tofd, char const *to) {
-  int err = renameat(fromfd, from, tofd, to);
+  char fromfile[64], tofile[64];
+  //strcpy(fromfile, file);
+  char *file2 = (char*)(ermia::config::log_dir.data());
+  strcpy(fromfile, file2);
+  strcpy(tofile, file2);
+
+  strcat(fromfile, from);
+  //strcpy(tofile, file);
+  strcat(tofile, to);
+  int err = rename(fromfile, tofile);
+
+  char from1[64], to1[64];
+  strcpy(from1, from);
+  strcpy(to1, to);
+  std::string from2, to2;
+  from2 = from;
+  to2 = to;
+  int fd = pmem_reverse[from2];
+  pmem_reverse[to2] = fd;
+  
+  //int err = renameat(fromfd, from, tofd, to);
+  //std::cerr<<"from : "<<from<<"      to : "<<to1<<"     fd: "<<pmem_reverse[to1] <<"   pmem_reverse.count(to1):  "<< pmem_reverse.count(to1) <<std::endl;
+  //std::cerr<<"fromfd : "<<fromfd<<"      tofd : "<<tofd<<std::endl;
   THROW_IF(err, os_error, errno, "Error renaming file %s to %s", from, to);
 }
 
 void os_unlinkat(int dfd, char const *fname, int flags) {
-  int err = unlinkat(dfd, fname, flags);
+  char file_name[64];
+  //strcpy(file_name, file);
+  char *file2 = (char*)(ermia::config::log_dir.data());
+  strcpy(file_name, file2);
+
+  strcat(file_name, fname);
+  int err = unlink(file_name);
+  //int err = unlinkat(dfd, fname, flags);
   THROW_IF(err, os_error, errno, "Error unlinking file %s", fname);
 }
 
@@ -113,13 +239,30 @@ void os_unlinkat(int dfd, char const *fname, int flags) {
    platforms we support. For now, we just ignore the problem.
  */
 void os_fsync(int fd) {
-  int err = fsync(fd);
-  THROW_IF(err, os_error, errno, "Error synching fd %d to disk", fd);
+  //int err = fsync(fd);
+  //THROW_IF(err, os_error, errno, "Error synching fd %d to disk", fd);
 }
 
 void os_close(int fd) {
-  int err = close(fd);
-  THROW_IF(err, os_error, errno, "Error closing fd %d", fd);
+  //int err = close(fd);
+  //THROW_IF(err, os_error, errno, "Error closing fd %d", fd);
+
+  //char *pmemaddr = pmem[fd];
+  //pmem_unmap(pmemaddr, PMEM_LEN);
+  //pmem.erase(fd);
+  //pmem_reverse.erase(pmemaddr);
+}
+
+void os_finish() {
+     std::map<int, char*>::reverse_iterator   iter;
+     for(iter = pmem.rbegin(); iter != pmem.rend(); iter++){
+          std::cerr<<iter->first<<" "<<iter->second<<std::endl;
+          pmem_unmap(iter->second, PMEM_LEN);
+     }
+
+     pmem.clear();
+     pmem_reverse.clear();
+
 }
 
 int os_dup(int fd) {
