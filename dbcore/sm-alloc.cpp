@@ -1,6 +1,8 @@
 #include <numa.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <libpmem.h>
+#include <string.h>
 
 #include <atomic>
 #include <future>
@@ -10,6 +12,7 @@
 #include "sm-common.h"
 #include "sm-object.h"
 #include "../txn.h"
+#include "sm-config.h"
 
 namespace ermia {
 namespace MM {
@@ -56,7 +59,34 @@ uint64_t *allocated_node_memory = nullptr;
 static uint64_t thread_local tls_allocated_node_memory CACHE_ALIGNED;
 static const uint64_t tls_node_memory_mb = 200;
 
+char **node_pmemaddr = nullptr;
+uint64_t *allocated_node_pmem = nullptr;
+size_t PMEM_LEN2 = 429496729600;
+
 void prepare_node_memory() {
+  int workers2 = config::worker_threads;
+  int worker_nodes = (workers2 + 17) / 18;
+  char file_name[4][64] = 
+    {"/mnt/pmem0/memory", "/mnt/pmem1/memory", "/mnt/pmem2/memory", "/mnt/pmem3/memory"};
+  std::cerr<<"---worker_nodes:"<<worker_nodes<<std::endl;
+  std::cerr<<"---workers2:"<<workers2<<std::endl;
+  allocated_node_pmem =
+      (uint64_t *)malloc(sizeof(uint64_t) * config::numa_nodes);
+  node_pmemaddr = (char **)malloc(sizeof(char *) * config::numa_nodes);
+  size_t mapped_len[4];
+  int is_pmem[4];
+  //char file_name[64]="/mnt/pmem0/memory";
+  for(int i=0; i<worker_nodes; ++i) {
+    allocated_node_pmem[i] = 0;
+    if ((node_pmemaddr[i] = (char*)pmem_map_file(file_name[i], PMEM_LEN2, PMEM_FILE_CREATE,
+                0666, &mapped_len[i], &is_pmem[i])) == NULL) {
+        std::cerr<< "pmem_map_file error2"<< std::endl;
+      }
+    std::cerr<<"---is_pmem---"<<is_pmem[i]<<std::endl;
+    std::cerr<<"---file_name---"<<file_name[i]<<std::endl;
+    std::cerr<<"---PMEM_LEN2---"<<PMEM_LEN2<<std::endl;
+  }
+
   ALWAYS_ASSERT(config::numa_nodes);
   allocated_node_memory =
       (uint64_t *)malloc(sizeof(uint64_t) * config::numa_nodes);
@@ -210,6 +240,11 @@ void *allocate_onnode(size_t size) {
   auto offset = __sync_fetch_and_add(&allocated_node_memory[node], size);
   if (likely(offset + size <= config::node_memory_gb * config::GB)) {
     return node_memory[node] + offset;
+  }
+
+  auto offset2 = __sync_fetch_and_add(&allocated_node_pmem[node], size);
+  if(offset + size <= PMEM_LEN2) {
+    return node_pmemaddr[node] + offset;
   }
   return nullptr;
 }
