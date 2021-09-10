@@ -899,7 +899,24 @@ uint64_t sm_log_alloc_mgr::smallest_tls_lsn_offset() {
    system's responsibility to ensure that the shutdown flag is not
    raised while new log records might still be generated.
  */
+#define numanode_size 751619276800
+//#define numanode_size 107374182400
+#define logger_first_node 1
+#define logger_second_node 0
+uint64_t has_write = 0;
+int run_on_node1 = logger_first_node;
+int run_on_node2 = logger_first_node;
+int run_on_node3 = logger_first_node;
+int run_on_node4 = logger_first_node;
+int run_on_node5 = logger_first_node;
+int run_on_node6 = logger_first_node;
+int run_on_node7 = logger_first_node;
+int run_on_node8 = logger_first_node;
+
 void sm_log_alloc_mgr::_log_write_daemon() {
+  numa_run_on_node(run_on_node1);
+  //std::cerr<<"_log_write_daemon"<<std::endl;
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1089,6 +1106,15 @@ void sm_log_alloc_mgr::_log_write_daemon() {
           //std::cerr<<"_sync_comp11: "<< _sync_comp<<std::endl;
         }
         //_sync_comp = false;
+        has_write += (8 * n);
+        if(has_write >= numanode_size && run_on_node1 == logger_first_node)
+        {
+          run_on_node1 = logger_second_node;
+          numa_run_on_node(run_on_node1);
+          std::cerr<<"-----logger switch"<<std::endl;
+          std::cerr<<"-----has_write: "<<has_write<<std::endl;
+          std::cerr<<"-----numanode_size: "<<numanode_size<<std::endl;
+        }
         _sync = _sync-7;
         _sync_write_daemon_mutex.unlock();
         //std::cerr<<"_sync_comp3: "<< _sync_comp<<std::endl;
@@ -1213,6 +1239,8 @@ void sm_log_alloc_mgr::_log_write_daemon() {
    raised while new log records might still be generated.
  */
 void sm_log_alloc_mgr::_log_write_daemon2() {
+  numa_run_on_node(run_on_node2);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1333,6 +1361,12 @@ void sm_log_alloc_mgr::_log_write_daemon2() {
         }
         _write_daemon_cond2.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
+
+        if(has_write >= numanode_size && run_on_node2 == logger_first_node)
+        {
+          run_on_node2 = logger_second_node;
+          numa_run_on_node(run_on_node2);
+        }
     
       }
     }
@@ -1350,6 +1384,8 @@ void sm_log_alloc_mgr::_log_write_daemon2() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon3() {
+  numa_run_on_node(run_on_node3);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1471,6 +1507,11 @@ void sm_log_alloc_mgr::_log_write_daemon3() {
         _write_daemon_cond3.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
     
+        if(has_write >= numanode_size && run_on_node3 == logger_first_node)
+        {
+          run_on_node3 = logger_second_node;
+          numa_run_on_node(run_on_node3);
+        }
       }
     }
 
@@ -1487,6 +1528,8 @@ void sm_log_alloc_mgr::_log_write_daemon3() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon4() {
+  numa_run_on_node(run_on_node4);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1607,7 +1650,12 @@ void sm_log_alloc_mgr::_log_write_daemon4() {
         }
         _write_daemon_cond4.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(has_write >= numanode_size && run_on_node4 == logger_first_node)
+        {
+          run_on_node4 = logger_second_node;
+          numa_run_on_node(run_on_node4);
+        }
       }
     }
 
@@ -1624,6 +1672,8 @@ void sm_log_alloc_mgr::_log_write_daemon4() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon5() {
+  numa_run_on_node(run_on_node5);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1745,6 +1795,11 @@ void sm_log_alloc_mgr::_log_write_daemon5() {
         _write_daemon_cond5.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
     
+        if(has_write >= numanode_size && run_on_node5 == logger_first_node)
+        {
+          run_on_node5 = logger_second_node;
+          numa_run_on_node(run_on_node5);
+        }
       }
     }
 
@@ -1761,6 +1816,8 @@ void sm_log_alloc_mgr::_log_write_daemon5() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon6() {
+  numa_run_on_node(run_on_node6);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -1882,6 +1939,11 @@ void sm_log_alloc_mgr::_log_write_daemon6() {
         _write_daemon_cond6.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
     
+        if(has_write >= numanode_size && run_on_node6 == logger_first_node)
+        {
+          run_on_node6 = logger_second_node;
+          numa_run_on_node(run_on_node6);
+        }
       }
     }
 
@@ -1898,6 +1960,8 @@ void sm_log_alloc_mgr::_log_write_daemon6() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon7() {
+  numa_run_on_node(run_on_node7);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -2018,7 +2082,12 @@ void sm_log_alloc_mgr::_log_write_daemon7() {
         }
         _write_daemon_cond7.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(has_write >= numanode_size && run_on_node7 == logger_first_node)
+        {
+          run_on_node7 = logger_second_node;
+          numa_run_on_node(run_on_node7);
+        }
       }
     }
 
@@ -2035,6 +2104,8 @@ void sm_log_alloc_mgr::_log_write_daemon7() {
 }
 
 void sm_log_alloc_mgr::_log_write_daemon8() {
+  numa_run_on_node(run_on_node8);
+
   RCU::rcu_register();
   RCU::rcu_enter();
   DEFER(RCU::rcu_exit());
@@ -2155,7 +2226,12 @@ void sm_log_alloc_mgr::_log_write_daemon8() {
         }
         _write_daemon_cond8.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(has_write >= numanode_size && run_on_node8 == logger_first_node)
+        {
+          run_on_node8 = logger_second_node;
+          numa_run_on_node(run_on_node8);
+        }
       }
     }
 
