@@ -21,6 +21,7 @@
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
+#include "../dbcore/sm-log-alloc.h"
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
@@ -427,6 +428,16 @@ void bench_runner::start_measurement() {
 
   double total_util = 0;
   double sec_util = 0;
+
+  extern int need_switch1;
+  extern int need_switch2;
+  extern int need_switch3;
+  extern int need_switch4;
+  extern int need_switch5;
+  extern int need_switch6;
+  extern int need_switch7;
+  extern int need_switch8;
+
   auto gather_stats = [&]() {
     sleep(1);
     uint64_t sec_commits = 0, sec_aborts = 0;
@@ -438,6 +449,19 @@ void bench_runner::start_measurement() {
     sec_aborts -= last_aborts;
     last_commits += sec_commits;
     last_aborts += sec_aborts;
+
+    
+    if(sec_commits / ermia::config::worker_threads < 22000)
+    {
+      need_switch1 = 1;
+      need_switch2 = 1;
+      need_switch3 = 1;
+      need_switch4 = 1;
+      need_switch5 = 1;
+      need_switch6 = 1;
+      need_switch7 = 1;
+      need_switch8 = 1;
+    }
 
     if (ermia::config::print_cpu_util) {
       sec_util = get_cpu_util();

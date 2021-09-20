@@ -62,10 +62,11 @@ static const uint64_t tls_node_memory_mb = 200;
 char **node_pmemaddr = nullptr;
 uint64_t *allocated_node_pmem = nullptr;
 size_t PMEM_LEN2 = 429496729600;
+int one_node_thread = 28;
 
 void prepare_node_memory() {
   int workers2 = config::worker_threads;
-  int worker_nodes = (workers2 + 17) / 18;
+  int worker_nodes = (workers2 + one_node_thread -1 ) / one_node_thread;
   char file_name[4][64] = 
     {"/mnt/pmem0/memory", "/mnt/pmem1/memory", "/mnt/pmem2/memory", "/mnt/pmem3/memory"};
   std::cerr<<"---worker_nodes:"<<worker_nodes<<std::endl;

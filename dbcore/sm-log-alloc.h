@@ -3,7 +3,18 @@
 #include <deque>
 #include "sm-log-recover.h"
 
+extern int need_switch1;
+  extern int need_switch2;
+  extern int need_switch3;
+  extern int need_switch4;
+  extern int need_switch5;
+  extern int need_switch6;
+  extern int need_switch7;
+  extern int need_switch8;
+
 namespace ermia {
+
+  
 
 /* The log block allocator.
 
