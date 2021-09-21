@@ -62,6 +62,7 @@ static const uint64_t tls_node_memory_mb = 200;
 char **node_pmemaddr = nullptr;
 uint64_t *allocated_node_pmem = nullptr;
 size_t PMEM_LEN2 = 429496729600;
+size_t PMEM_LEN3 = 107374182400;
 int one_node_thread = 28;
 
 void prepare_node_memory() {
@@ -79,13 +80,26 @@ void prepare_node_memory() {
   //char file_name[64]="/mnt/pmem0/memory";
   for(int i=0; i<worker_nodes; ++i) {
     allocated_node_pmem[i] = 0;
-    if ((node_pmemaddr[i] = (char*)pmem_map_file(file_name[i], PMEM_LEN2, PMEM_FILE_CREATE,
+    if(i >= 2)
+    {
+      if ((node_pmemaddr[i] = (char*)pmem_map_file(file_name[i], PMEM_LEN3, PMEM_FILE_CREATE,
                 0666, &mapped_len[i], &is_pmem[i])) == NULL) {
         std::cerr<< "pmem_map_file error2"<< std::endl;
       }
-    std::cerr<<"---is_pmem---"<<is_pmem[i]<<std::endl;
-    std::cerr<<"---file_name---"<<file_name[i]<<std::endl;
-    std::cerr<<"---PMEM_LEN2---"<<PMEM_LEN2<<std::endl;
+      std::cerr<<"---is_pmem---"<<is_pmem[i]<<std::endl;
+      std::cerr<<"---file_name---"<<file_name[i]<<std::endl;
+      std::cerr<<"---PMEM_LEN3---"<<PMEM_LEN3<<std::endl;
+    }
+    else
+    {
+      if ((node_pmemaddr[i] = (char*)pmem_map_file(file_name[i], PMEM_LEN2, PMEM_FILE_CREATE,
+                0666, &mapped_len[i], &is_pmem[i])) == NULL) {
+        std::cerr<< "pmem_map_file error2"<< std::endl;
+      }
+      std::cerr<<"---is_pmem---"<<is_pmem[i]<<std::endl;
+      std::cerr<<"---file_name---"<<file_name[i]<<std::endl;
+      std::cerr<<"---PMEM_LEN2---"<<PMEM_LEN2<<std::endl;
+    }
   }
 
   ALWAYS_ASSERT(config::numa_nodes);
