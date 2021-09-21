@@ -72,8 +72,18 @@ struct sm_log_alloc_mgr {
   void discard(log_allocation *x);
 
   void _log_write_daemon();
+  void _log_write_daemon2();
+  void _log_write_daemon3();
+  void _log_write_daemon4();
+  void _log_write_daemon5();
+  void _log_write_daemon6();
+  void _log_write_daemon7();
+  void _log_write_daemon8();
+  
   void _kick_log_write_daemon();
-  segment_id *PrimaryFlushLog(uint64_t new_dlsn_dlsn,
+  void _kick_log_write_daemon2();
+
+  segment_id *PrimaryFlushLog(uint64_t start_dlsn_dlsn, uint64_t new_dlsn_dlsn,
                               bool update_dmark = false);
   void PrimaryShipLog(segment_id *durable_sid, uint64_t nbytes,
                       bool new_seg, uint64_t new_offset, const char *buf);
@@ -89,8 +99,22 @@ struct sm_log_alloc_mgr {
   uint64_t _durable_flushed_lsn_offset;
 
   pthread_t _write_daemon_tid;
+  pthread_t _write_daemon_tid2;
+  pthread_t _write_daemon_tid3;
+  pthread_t _write_daemon_tid4;
+  pthread_t _write_daemon_tid5;
+  pthread_t _write_daemon_tid6;
+  pthread_t _write_daemon_tid7;
+  pthread_t _write_daemon_tid8;
   os_mutex _write_daemon_mutex;
   os_condvar _write_daemon_cond;
+  os_condvar _write_daemon_cond2;
+  os_condvar _write_daemon_cond3;
+  os_condvar _write_daemon_cond4;
+  os_condvar _write_daemon_cond5;
+  os_condvar _write_daemon_cond6;
+  os_condvar _write_daemon_cond7;
+  os_condvar _write_daemon_cond8;
   os_condvar _write_complete_cond;
   os_condvar _dmark_updated_cond;
 
@@ -100,7 +124,17 @@ struct sm_log_alloc_mgr {
   bool _waiting_for_dmark;
 
   bool _write_daemon_should_wake;
+  bool _write_daemon_should_wake2;
   bool _write_daemon_should_stop;
+  bool _write_daemon_should_stop2;
+
+  os_mutex _sync_write_daemon_mutex;
+  os_condvar _sync_write_daemon_cond;
+  bool _sync_comp;
+  bool should_break;
+
+  uint64_t sync_new_dlsn_offset;
+  int _sync;
 
   // tzwang: use one _tls_lsn_offset per worker thread to record its
   // most-recently committed/aborted transaction's log lsn offset. This array
