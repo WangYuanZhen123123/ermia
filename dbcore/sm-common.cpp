@@ -21,10 +21,12 @@
 //#define PMEM_LEN 17179869184
 #define PMEM_LEN (config::log_segment_mb *1024 *1024)
 #define PMEM_FILE 1024
-//char file[64]="/mnt/pmem1/ermiadb_log/";
+char other_file[64]="/mnt/pmem0/ermiadb_log/";
 int seq=0;
 std::map<int, char*> pmem;
 std::map<std::string, int> pmem_reverse;
+int segment_number =0;
+int switch_number = 10;
 
 namespace ermia {
 
@@ -67,10 +69,16 @@ int os_openat(int dfd, char const *fname, int flags) {
   
   if(flags & O_CREAT && !pmem_reverse.count(fname2))
   {
-    
-    //strcpy(file_name, file);
-    char *file2 = (char*)(ermia::config::log_dir.data());
-    strcpy(file_name, file2);
+    segment_number++;
+    if(segment_number > switch_number)
+    {
+      strcpy(file_name, other_file);   
+    }
+    else
+    {
+      char *file2 = (char*)(ermia::config::log_dir.data());
+      strcpy(file_name, file2);
+    }
 
     strcat(file_name, fname);
     //std::cerr<< file_name<< std::endl;
@@ -161,8 +169,17 @@ void os_truncateat(int dfd, char const *path, size_t size) {
 
   char file_name[64];
   //strcpy(file_name, file);
-  char *file2 = (char*)(ermia::config::log_dir.data());
-  strcpy(file_name, file2);
+  //char *file2 = (char*)(ermia::config::log_dir.data());
+  //strcpy(file_name, file2);
+  if(segment_number > switch_number)
+    {
+      strcpy(file_name, other_file);      
+    }
+    else
+    {
+      char *file2 = (char*)(ermia::config::log_dir.data());
+      strcpy(file_name, file2);
+    }
 
   strcat(file_name, path);
   int err = truncate(file_name, size);
@@ -191,9 +208,21 @@ void os_truncateat(int dfd, char const *path, size_t size) {
 void os_renameat(int fromfd, char const *from, int tofd, char const *to) {
   char fromfile[64], tofile[64];
   //strcpy(fromfile, file);
-  char *file2 = (char*)(ermia::config::log_dir.data());
-  strcpy(fromfile, file2);
-  strcpy(tofile, file2);
+  //char *file2 = (char*)(ermia::config::log_dir.data());
+  //strcpy(fromfile, file2);
+  //strcpy(tofile, file2);
+  if(segment_number > switch_number && from[0] == 'n')
+    {
+      strcpy(fromfile, other_file);
+      strcpy(tofile, other_file);
+      
+    }
+    else
+    {
+      char *file2 = (char*)(ermia::config::log_dir.data());
+      strcpy(fromfile, file2);
+      strcpy(tofile, file2);
+    }
 
   strcat(fromfile, from);
   //strcpy(tofile, file);
@@ -218,8 +247,17 @@ void os_renameat(int fromfd, char const *from, int tofd, char const *to) {
 void os_unlinkat(int dfd, char const *fname, int flags) {
   char file_name[64];
   //strcpy(file_name, file);
-  char *file2 = (char*)(ermia::config::log_dir.data());
-  strcpy(file_name, file2);
+  //char *file2 = (char*)(ermia::config::log_dir.data());
+  //strcpy(file_name, file2);
+  if(segment_number > switch_number)
+    {
+      strcpy(file_name, other_file);      
+    }
+    else
+    {
+      char *file2 = (char*)(ermia::config::log_dir.data());
+      strcpy(file_name, file2);
+    }
 
   strcat(file_name, fname);
   int err = unlink(file_name);
