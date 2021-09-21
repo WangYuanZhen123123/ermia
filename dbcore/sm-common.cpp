@@ -22,7 +22,7 @@
 //#define PMEM_LEN 17179869184
 #define PMEM_LEN (config::log_segment_mb *1024 *1024)
 #define PMEM_FILE 1024
-char other_file[64]="/mnt/pmem0/ermiadb_log/";
+char other_file[64]="/mnt/pmem2/ermiadb_log/";
 int seq=0;
 std::map<int, char*> pmem;
 std::map<std::string, int> pmem_reverse;

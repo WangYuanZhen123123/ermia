@@ -13,8 +13,8 @@ int need_switch5 = 0;
 int need_switch6 = 0;
 int need_switch7 = 0;
 int need_switch8 = 0;
-#define logger_first_node 1
-#define logger_second_node 0
+#define logger_first_node 3
+#define logger_second_node 2
 int all_two_node = logger_first_node + logger_second_node;
 int current_node1 = logger_first_node;
 int current_node2 = logger_first_node;

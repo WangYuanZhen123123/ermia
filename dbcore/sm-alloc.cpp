@@ -62,7 +62,7 @@ static const uint64_t tls_node_memory_mb = 200;
 char **node_pmemaddr = nullptr;
 uint64_t *allocated_node_pmem = nullptr;
 size_t PMEM_LEN2 = 429496729600;
-int one_node_thread = 18;
+int one_node_thread = 28;
 
 void prepare_node_memory() {
   int workers2 = config::worker_threads;
