@@ -15,6 +15,7 @@
 #include <libpmem.h>
 #include <map>
 #include "sm-config.h"
+#include "sm-log-alloc.h"
 
 
 #define LAYOUT_NAME "intro_1"
@@ -27,6 +28,15 @@ std::map<int, char*> pmem;
 std::map<std::string, int> pmem_reverse;
 int segment_number =0;
 int switch_number = 10;
+extern int need_switch1;
+extern int need_switch2;
+extern int need_switch3;
+extern int need_switch4;
+extern int need_switch5;
+extern int need_switch6;
+extern int need_switch7;
+extern int need_switch8;
+int node_has_change =0;
 
 namespace ermia {
 
@@ -72,7 +82,19 @@ int os_openat(int dfd, char const *fname, int flags) {
     segment_number++;
     if(segment_number > switch_number)
     {
-      strcpy(file_name, other_file);   
+      strcpy(file_name, other_file);
+      if(node_has_change == 0)
+      {
+        need_switch1 = 1;
+        need_switch2 = 1;
+        need_switch3 = 1;
+        need_switch4 = 1;
+        need_switch5 = 1;
+        need_switch6 = 1;
+        need_switch7 = 1;
+        need_switch8 = 1;  
+        node_has_change = 1;    
+      }   
     }
     else
     {

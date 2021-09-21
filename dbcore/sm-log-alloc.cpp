@@ -5,6 +5,26 @@
 #include "stopwatch.h"
 #include "../util.h"
 
+int need_switch1 = 0;
+int need_switch2 = 0;
+int need_switch3 = 0;
+int need_switch4 = 0;
+int need_switch5 = 0;
+int need_switch6 = 0;
+int need_switch7 = 0;
+int need_switch8 = 0;
+#define logger_first_node 1
+#define logger_second_node 0
+int all_two_node = logger_first_node + logger_second_node;
+int current_node1 = logger_first_node;
+int current_node2 = logger_first_node;
+int current_node3 = logger_first_node;
+int current_node4 = logger_first_node;
+int current_node5 = logger_first_node;
+int current_node6 = logger_first_node;
+int current_node7 = logger_first_node;
+int current_node8 = logger_first_node;
+
 namespace {
 
 uint64_t get_starting_byte_offset(ermia::sm_log_recover_mgr *lm) {
@@ -1089,6 +1109,16 @@ void sm_log_alloc_mgr::_log_write_daemon() {
           //std::cerr<<"_sync_comp11: "<< _sync_comp<<std::endl;
         }
         //_sync_comp = false;
+
+        if(need_switch1)
+        {
+          current_node1 = all_two_node - current_node1;
+          numa_run_on_node(current_node1);
+          need_switch1 = 0;
+          std::cerr<<"-----logger switch"<<std::endl;
+          std::cerr<<"-----current_node:  "<<current_node1<<std::endl;
+        }
+
         _sync = _sync-7;
         _sync_write_daemon_mutex.unlock();
         //std::cerr<<"_sync_comp3: "<< _sync_comp<<std::endl;
@@ -1333,7 +1363,13 @@ void sm_log_alloc_mgr::_log_write_daemon2() {
         }
         _write_daemon_cond2.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch2)
+        {
+          current_node2 = all_two_node - current_node2;
+          numa_run_on_node(current_node2);
+          need_switch2 = 0;
+        }
       }
     }
 
@@ -1470,6 +1506,13 @@ void sm_log_alloc_mgr::_log_write_daemon3() {
         }
         _write_daemon_cond3.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
+
+        if(need_switch3)
+        {
+          current_node3 = all_two_node - current_node3;
+          numa_run_on_node(current_node3);
+          need_switch3 = 0;
+        }
     
       }
     }
@@ -1607,7 +1650,15 @@ void sm_log_alloc_mgr::_log_write_daemon4() {
         }
         _write_daemon_cond4.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch4)
+        {
+          current_node4 = all_two_node - current_node4;
+          numa_run_on_node(current_node4);
+          need_switch4 = 0;
+        }
+
+        
       }
     }
 
@@ -1744,7 +1795,13 @@ void sm_log_alloc_mgr::_log_write_daemon5() {
         }
         _write_daemon_cond5.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch5)
+        {
+          current_node5 = all_two_node - current_node5;
+          numa_run_on_node(current_node5);
+          need_switch5 = 0;
+        }
       }
     }
 
@@ -1881,7 +1938,13 @@ void sm_log_alloc_mgr::_log_write_daemon6() {
         }
         _write_daemon_cond6.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch6)
+        {
+          current_node6 = all_two_node - current_node6;
+          numa_run_on_node(current_node6);
+          need_switch6 = 0;
+        }
       }
     }
 
@@ -2018,7 +2081,13 @@ void sm_log_alloc_mgr::_log_write_daemon7() {
         }
         _write_daemon_cond7.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch7)
+        {
+          current_node7 = all_two_node - current_node7;
+          numa_run_on_node(current_node7);
+          need_switch7 = 0;
+        }
       }
     }
 
@@ -2155,7 +2224,13 @@ void sm_log_alloc_mgr::_log_write_daemon8() {
         }
         _write_daemon_cond8.wait(_sync_write_daemon_mutex);
         _sync_write_daemon_mutex.unlock();
-    
+
+        if(need_switch8)
+        {
+          current_node8 = all_two_node - current_node8;
+          numa_run_on_node(current_node8);
+          need_switch8 = 0;
+        }
       }
     }
 
